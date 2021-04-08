@@ -1,0 +1,29 @@
+#!/bin/bash
+
+mkdir dns_records
+cd dns_records
+
+record_types=('CNAME' 'TXT' 'MX' 'NS' 'PTR' 'SRV')
+
+for sub in $(cat ../$1)
+do
+	for record_type in ${record_types[@]};
+	do
+        echo "Searching for $record_type in $sub"
+		record_file=$(echo $record_type)_records.txt
+		dig $sub $record_type | grep IN | grep "$record_type" | tail -n +2 | awk '{print $1, " ",  $3, " ", $4, " ", $5, " ", $6}' >> $record_file
+	done
+done
+
+for record_type in ${record_types[@]};
+do
+    record_file=$(echo $record_type)_records.txt
+    cat $record_file | sort | uniq > temp.txt
+    cat temp.txt > $record_file
+    rm temp.txt
+
+    if ! [ -s $record_file ]
+    then
+       rm $record_file
+    fi
+done
