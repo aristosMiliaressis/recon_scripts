@@ -1,0 +1,31 @@
+#!/bin/bash
+
+sort_and_uniq() {
+	cat $1 | sort | uniq > temp.txt
+	cat temp.txt > $1
+	rm temp.txt
+}
+
+for masscan in $(find . -type f -name \*_masscan.json)
+do
+	cat $masscan | jq .[].ip | tr -d '"' >> all_hosts.txt
+
+	cat $masscan | jq "{ip:.[].ip, port:.[].ports[].port}" >> all_services.json
+	cat all_services.json | tr -d '"ip"' | tr -d '"port"' | tr -d ':' | tr ',' ':' | tr -d '{' | tr -d '\n' | tr '}' '\n' | tr -d '   ' >> all_services.txt
+done
+
+for domainfile in $(find . -type f -name \*_domains.txt)
+do
+	cat $domainfile >> all_domains.txt
+	echo >> all_domains.txt
+done
+
+for webserverfile in $(find . -type f -name \*_http.txt)
+do
+	cat $webserverfile >> all_webservers.txt
+done
+
+sort_and_uniq all_webservers.txt
+sort_and_uniq all_domains.txt
+sort_and_uniq all_hosts.txt
+sort_and_uniq all_services.txt
