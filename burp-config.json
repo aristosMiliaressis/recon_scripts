@@ -146,7 +146,7 @@
         },
         "http":{
             "http2":{
-                "enable_http2":false
+                "enable_http2":true
             },
             "redirections":{
                 "understand_3xx_status_code":true,
@@ -473,7 +473,7 @@
         ],
         "miscellaneous":{
             "disable_logging_to_history_and_site_map":false,
-            "disable_out_of_scope_logging_to_history_and_site_map":false,
+            "disable_out_of_scope_logging_to_history_and_site_map":true,
             "disable_web_interface":false,
             "remove_unsupported_encodings_from_accept_encoding_headers_in_incoming_requests":true,
             "set_connection_close_header_on_requests":true,
@@ -619,7 +619,7 @@
             }
         },
         "scope":{
-            "advanced_mode":false,
+            "advanced_mode":true,
             "exclude":[],
             "include":[]
         }
