@@ -11,8 +11,9 @@ domain=$1
 
 domainsfile=$(echo $domain)_domains.txt
 httpfile=$(echo $domain)_http.txt
-bucketsfile=$(echo $domain)_buckets.txt
 screenshotdir=$(echo $domain)_screenshots
+
+cd /opt/pwntainer/data
 
 mkdir $domain
 cd $domain
@@ -23,8 +24,8 @@ cd $datestamp
 
 echo "Scanning $domain"
 
+#assetfinder -subs-only $domain | sort -u | tee $domainsfile
 subfinder -silent -nC -o $domainsfile -rL $DNS_RESOLVERS_FILE -d $domain
-#assetfinder -subs-only $domain  | sort | uniq | tee $domainsfile
 subfinder_count=$(wc -l $domainsfile | awk '{print  $1}')
 
 echo "subfinder found $subfinder_count subdomain(s)"
@@ -33,7 +34,7 @@ echo "subfinder found $subfinder_count subdomain(s)"
 #echo "massdns found $(wc -l massdns.json | awk '{print  $1}') subdomains"
 #TODO: append massdns findings to domains file & uniq
 
-amass enum -rf $DNS_RESOLVERS_FILE -max-dns-queries 20000 -d $domain -dir . -noalts -active | tee -a $domainsfile
+amass enum -rf $DNS_RESOLVERS_FILE -max-dns-queries 20000 -d $domain -dir . -active | tee -a $domainsfile
 cat $domainsfile | unfurl --unique domains | grep $domain > tmpfile
 cat tmpfile > $domainsfile
 rm tmpfile
@@ -44,27 +45,18 @@ amass_count=$(($amass_count-$subfinder_count))
 echo "amass found $amass_count new subdomains"
 
 dig_deep $domainsfile
-if ! [ -s dns_records/CNAME_records.txt ]
+if ! [ -s all_records.txt ]
 then
-	cat dns_records/CNAME_records.txt | awk '{print $4}' | tee -a $domainsfile
+	cat all_records.txt | awk '{print $4}' | tee -a $domainsfile
 	sort_and_uniq $domainsfile
 fi
 
-cat $domainsfile | httprobe -p https:8443 -prefer-https | tee -a $httpfile
+cat $domainsfile | httpx -silent -ports 80,443,8080,8443 | tee -a $httpfile
 echo "$(wc -l $httpfile | awk '{print  $1}') web servers found."
+
+cat $domainsfile | aar
+cat $httpfile | aar
 
 echo "Taking screenshots.."
 
-cat $httpfile | aquatone -chrome-path /usr/bin/chromium -http-timeout 30000 -scan-timeout 1000 -screenshot-timeout 2000000 -out $screenshotdir
-
-#keyword=$(echo $domain | tr '.' ' ' | awk '{print $1}')
-#echo "Guessing s3 buckets with keyword $keyword..."
-#ruby /opt/lazys3/lazys3.rb $keyword > $bucketsfile
-#cat $bucketsfile | tail -n +2 | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $3}'> temp.txt
-#cat temp.txt > $bucketsfile
-#rm temp.txt
-#echo "$(wc -l $bucketsfile | awk '{print  $1}') S3 buckets found."
-
-#echo "Testing S3 buckets for insecure permitions"
-#python3 /opt/s3scanner/s3scanner.py --out-file s3scan.txt $bucketsfile
-
+cat $httpfile | aquatone -chrome-path /usr/bin/chromium-browser -http-timeout 6000 -scan-timeout 400 -screenshot-timeout 300000 -out $screenshotdir

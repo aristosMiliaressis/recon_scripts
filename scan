@@ -41,7 +41,9 @@ scan_target() {
 	hostsfile=$(echo $escaped_cidr)_hosts.txt
 	masscanfile=$(echo $escaped_cidr)_masscan.json
 	nmapoutfile=$(echo $escaped_cidr)_nmap.xml
-
+	
+	cd /opt/pwntainer/data
+	
 	mkdir $escaped_cidr 2>/dev/null
 	cd $escaped_cidr
 
@@ -49,15 +51,15 @@ scan_target() {
 	mkdir $datestamp 2>/dev/null
 	cd $datestamp
 
-	sudo masscan $ports $1 --output-format json --output-file $masscanfile
+	sudo masscan $ports $1 -oD $masscanfile
 
-	cat $masscanfile | jq .[].ip | sort | uniq | tr -d '"' > $hostsfile
+	cat $masscanfile | jq .ip -r | sort -u > $hostsfile
 	host_count=$(wc -l $hostsfile | awk '{print $1}')
 	echo "masscan found $host_count host(s)"
 
 	if [[ $host_count > 0 ]]
 	then
-		ports=$(cat $masscanfile | jq .[].ports[].port | sort | uniq | tr '\n' ',')
+		ports=$(cat $masscanfile | jq .port | sort -u | tr '\n' ',')
 		ports=${ports::-1}
 
 		sudo nmap -O -sSVC -p $ports -iL $hostsfile -oX $nmapoutfile --webxml
@@ -92,3 +94,6 @@ else
 		cd ../..
 	done
 fi
+
+cat $hostsfile | aar
+cat $masscanfile | jq -r '[.ip, .port] | "\(.[0]):\(.[1])"' | aar

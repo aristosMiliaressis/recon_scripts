@@ -6,16 +6,14 @@ then
     exit 1
 fi
 
-mkdir dns_records
-cd dns_records
 
 for host in $(cat ../$1)
 do
 	ip=$(dig +short -x $host)
 	echo "$host -> $ip"
-	echo "$host -> $ip" >> PTR_records.txt
+	echo "$host\tIN\tPTR\t$ip" >> all_records.txt
 done
 
-cat PTR_records.txt | grep -v in-addr.arpa | grep -v inaddr.ip-pool.com | grep -v dyn.forthnet.gr > temp.txt
-cat temp.txt > PTR_records.txt
+cat all_records.txt | grep -v in-addr.arpa | grep -v inaddr.ip-pool.com | grep -v dyn.forthnet.gr > temp.txt
+cat temp.txt > all_records.txt
 rm temp.txt
