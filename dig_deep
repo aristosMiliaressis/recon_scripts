@@ -2,7 +2,7 @@
 
 # TODO: work recursivly
 
-if [ $# -eq 0 ]; 
+if [ $# -eq 0 ];
 then
     echo "USAGE: dig_deep <hostfile>"
     exit 1
@@ -14,10 +14,17 @@ sort_and_uniq() {
     rm temp.txt
 }
 
+registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1)
+ns_authority=$(dig +short  SOA $registration_domain | cut -d' ' -f1)
+
 for sub in $(cat $1)
 do
     echo "Searching for ANY in $sub"
-    dig +noquestion +nottlid $sub ANY | tr '\t' ' ' | grep " IN " >> all_records.txt
+
+    dig +noquestion +nottlid $sub ANY @$ns_authority | tr '\t' ' ' | grep " IN " >> all_records.txt
+
+    # extracting ips from SPF records
+    dig +short TXT mellongroup.com | grep spf | tr ' ' '\n' | grep 'ip4\|ip6' | cut -c  5- >> all_hosts.txt
 done
 
 sort_and_uniq all_records.txt
@@ -32,6 +39,19 @@ do
 done
 
 sort_and_uniq all_records.txt
+
+cat all_hosts.txt | aar
+#cat all_records.txt | aar
+
+cat all_records.txt | grep CNAME | awk '{print $1}' | while read cname;
+do
+    echo "Checking $cname for NS takeover"
+    if [[ $(host $cname | grep NXDOMAIN) != "" ]]
+    then
+        echo "Possible CNAME takeover on $cname"
+        echo "$cname" >> takeovers.txt
+    fi
+done
 
 zone_transfer() {
     echo "Zone transfer attempt $1 $2"

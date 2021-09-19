@@ -47,7 +47,7 @@ scan_target() {
 	mkdir $escaped_cidr 2>/dev/null
 	cd $escaped_cidr
 
-	datestamp=$(date +%Y%m%d)
+	datestamp=$(date +"%Y-%m-%d")
 	mkdir $datestamp 2>/dev/null
 	cd $datestamp
 
@@ -95,5 +95,9 @@ else
 	done
 fi
 
+/opt/recontools/SSLRecon -q $1 > sslrecon.txt
+cat sslrecon.txt | grep Subject | tr ' ' '\n' | grep "CN=" | cut -c 4- | grep [A-Za-z] | grep "\." >> domains.txt
+
 cat $hostsfile | aar
 cat $masscanfile | jq -r '[.ip, .port] | "\(.[0]):\(.[1])"' | aar
+cat domains.txt | aar
