@@ -17,7 +17,7 @@ sort_and_uniq() {
 
 if [ $# -gt 1 ];
 then
-    registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1)
+    registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1) # TODO fix this
     ns_authority=$(dig +short SOA $registration_domain | cut -d' ' -f1)
     echo "Registration Domain: $registration_domain"
     echo "Authoritative NS: $ns_authority"
