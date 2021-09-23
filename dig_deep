@@ -4,7 +4,7 @@
 
 if [ $# -eq 0 ];
 then
-    echo "USAGE: dig_deep <hostfile>"
+    echo "USAGE: dig_deep <hostfile> [registration_domain]"
     exit 1
 fi
 
@@ -14,15 +14,25 @@ sort_and_uniq() {
     rm temp.txt
 }
 
-registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1)
-ns_authority=$(dig +short  SOA $registration_domain | cut -d' ' -f1)
+
+if [ $# -gt 1 ];
+then
+    registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1)
+    ns_authority=$(dig +short SOA $registration_domain | cut -d' ' -f1)
+    echo "Registration Domain: $registration_domain"
+    echo "Authoritative NS: $ns_authority"
+fi
 
 for sub in $(cat $1)
 do
     echo "Searching for ANY in $sub"
 
-    dig +noquestion +nottlid $sub ANY @$ns_authority | tr '\t' ' ' | grep " IN " >> all_records.txt
-
+    if [ $# -gt 1 ];
+    then
+        dig +noquestion +nottlid $sub ANY @$ns_authority | tr '\t' ' ' | grep " IN " >> all_records.txt
+    else
+        dig +noquestion +nottlid $sub ANY | tr '\t' ' ' | grep " IN " >> all_records.txt
+    fi
     # extracting ips from SPF records
     dig +short TXT mellongroup.com | grep spf | tr ' ' '\n' | grep 'ip4\|ip6' | cut -c  5- >> all_hosts.txt
 done
@@ -40,8 +50,8 @@ done
 
 sort_and_uniq all_records.txt
 
-cat all_hosts.txt | aar
-#cat all_records.txt | aar
+aar < all_hosts.txt 
+aar < all_records.txt
 
 cat all_records.txt | grep CNAME | awk '{print $1}' | while read cname;
 do

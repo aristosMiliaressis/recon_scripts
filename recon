@@ -1,7 +1,7 @@
 #!/bin/bash
 
 sort_and_uniq() {
-	cat $1 | sort | uniq > temp.txt
+	cat $1 | sort -u > temp.txt
 	cat temp.txt > $1
 	rm temp.txt
 }
@@ -31,7 +31,7 @@ echo "subfinder found $subfinder_count subdomain(s)"
 
 shuffledns -d $domain -w /opt/pwntainer/lists/top20000.txt -r $DNS_RESOLVERS_FILE -strict-wildcard -silent -o shuffledns.txt
 cat shuffledns.txt >> $domainsfile
-sort_and_uniq$domainsfile
+sort_and_uniq $domainsfile
 
 shuffledns_count=$(wc -l $domainsfile | awk '{print  $1}')
 shuffledns_count=$((shuffledns_count-subfinder_count))
@@ -47,7 +47,7 @@ amass_count=$((amass_count-shuffledns_count-subfinder_count))
 
 echo "amass found $amass_count unique subdomains"
 
-dig_deep $domainsfile
+dig_deep $domainsfile $domain
 if ! [ -s all_records.txt ]
 then
 	cat all_records.txt | awk '{print $4}' | tee -a $domainsfile
@@ -57,11 +57,8 @@ fi
 cat $domainsfile | httpx -silent -ports 80,443,8080,8443 | tee -a $baseurlfile
 echo "$(wc -l $baseurlfile | awk '{print  $1}') web servers found."
 
-cat $domainsfile | aar
-cat $baseurlfile | aar
-
-echo "Taking screenshots.."
-cat $baseurlfile | aquatone -chrome-path /usr/bin/chromium-browser -silent -threads=5 -screenshot-timeout 300000
+aar < $domainsfile
+aar < $baseurlfile 
 
 waybackrecon () {
 	echo "Scraping wayback for data..."
@@ -85,3 +82,6 @@ waybackrecon () {
 }
 
 waybackrecon $domain
+
+echo "Taking screenshots.."
+cat $baseurlfile | aquatone -chrome-path /usr/bin/chromium-browser -silent -threads=5 -screenshot-timeout 300000
