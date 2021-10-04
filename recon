@@ -54,10 +54,11 @@ then
 	sort_and_uniq $domainsfile
 fi
 
-cat $domainsfile | httpx -silent -ports 80,443,8080,8443 | tee -a $baseurlfile
+aar < $domainsfile
+
+cat resolvable_domains.txt | httpx -silent -ports 80,443,8080,8443 | tee -a $baseurlfile
 echo "$(wc -l $baseurlfile | awk '{print  $1}') web servers found."
 
-aar < $domainsfile
 aar < $baseurlfile 
 
 waybackrecon () {

@@ -53,6 +53,8 @@ sort_and_uniq all_records.txt
 aar < all_hosts.txt 
 aar < all_records.txt
 
+cat all_records.txt | grep 'IN A \|IN AAAA\|IN CNAME' | awk '{print $1}' >> resolvable_domains.txt
+
 cat all_records.txt | grep CNAME | awk '{print $1}' | while read cname;
 do
     echo "Checking $cname for NS takeover"
