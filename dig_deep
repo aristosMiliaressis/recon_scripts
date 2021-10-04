@@ -14,7 +14,6 @@ sort_and_uniq() {
     rm temp.txt
 }
 
-
 if [ $# -gt 1 ];
 then
     registration_domain=$(pwd | tr '/' '\n' | sort -nr | tail -n 3 | head -n 1)
@@ -33,8 +32,9 @@ do
     else
         dig +noquestion +nottlid $sub ANY | tr '\t' ' ' | grep " IN " >> all_records.txt
     fi
+
     # extracting ips from SPF records
-    dig +short TXT mellongroup.com | grep spf | tr ' ' '\n' | grep 'ip4\|ip6' | cut -c  5- >> all_hosts.txt
+    dig +short TXT $1 | grep spf | tr ' ' '\n' | grep 'ip4\|ip6' | cut -c  5- >> all_hosts.txt
 done
 
 sort_and_uniq all_records.txt
@@ -50,10 +50,10 @@ done
 
 sort_and_uniq all_records.txt
 
+cat all_records.txt | grep 'IN A \|IN AAAA\|IN CNAME' | awk '{print $1}' >> routable_domains.txt
+
 aar < all_hosts.txt 
 aar < all_records.txt
-
-cat all_records.txt | grep 'IN A \|IN AAAA\|IN CNAME' | awk '{print $1}' >> resolvable_domains.txt
 
 cat all_records.txt | grep CNAME | awk '{print $1}' | while read cname;
 do
@@ -82,14 +82,14 @@ grep " IN NS" all_records.txt | while read -r entry ; do
     zone_transfer $ns "local"
     zone_transfer $ns internal
     zone_transfer $ns network
-    zone_transfer $ns lan
     zone_transfer $ns company
-    zone_transfer $ns computer
     zone_transfer $ns server
+    #zone_transfer $ns lan
+    #zone_transfer $ns computer
+    #zone_transfer $ns "-x 192.168"
     zone_transfer $ns "-x 10"
-    zone_transfer $ns "-x 192.168"
     for i in $(seq 16 31);
     do
-        zone_transfer $ns "-x 172.$i"
+        #zone_transfer $ns "-x 172.$i"
     done
 done
