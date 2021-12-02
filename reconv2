@@ -1,0 +1,224 @@
+#!/bin/bash
+
+# TODO:
+# fix zone transfer code
+# cloudenum
+
+DNS_RESOLVERS_FILE=/opt/dnsvalidator/resolvers_top25.txt
+COMMONSPEAK_DICT=/opt/commonspeak2-wordlists/subdomains/subdomains.txt
+WILDCARD_TESTS=3
+
+print_help() {
+	echo "USAGE: $0 -d <domain> [options]"
+	echo
+	echo "OPTIONS:"
+	printf "\t-h|--help\tprints this help page.\n"
+	printf "\t-d|--domain\tspecify domain name to target.\n"
+	printf "\t--no-alts\tdon't guess alterations of valid subdomains.\n"
+	printf "\t--no-brute\tdon't bruteforce subdomains with commonspeak2.\n"
+	printf "\t--no-ss \tdon't take screenshots.\n"
+	printf "\t--no-cloud\tdon't do cloud enumeration.\n"
+	echo
+	echo "DESCRIPTION:"
+	echo "this script..."
+	echo "passivly gathers subdomains trough amass & github-subdomains"
+	echo "looks for subdomains in FDNS"
+	echo "bruteforces subdomains with commonspeak2"
+	echo "tries alterations of routable subdomains with dnsgen"
+	echo "interogates valid subdomains and collects all valid records"
+	echo "extracts ips from A/AAAA & SPF records"
+	echo "collects PTR records for all ips"
+	echo "looks for CNAME takeovers"
+	echo "attempts a bunch of zone transfers"
+	echo "probes routable domains for http servers"
+	echo "gets urls trough gau & waybackurls"
+	echo "takes screenshots with aquatone"
+}
+
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+	-h|--help)
+		print_help
+		exit 0
+	;;
+	-d|--domain)
+		if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+			domain=$2
+			shift
+		fi
+		shift
+	;;
+	--no-alts)
+		NO_ALTS="true"
+		shift
+	;;
+	--no-brute)
+		NO_BRUTE="true"
+		shift
+	;;
+	--no-ss)
+		NO_SCREENSHOTS="true"
+		shift
+	;;
+	--no-cloud)
+		NO_CLOUD="true"
+		shift
+	;;
+	-*|--*=)
+		echo "Error: Unsupported flag $1" >&2
+		exit 1
+	;;
+  esac
+done
+
+if [ -z "$domain" ];
+then
+	print_help
+	exit 1
+fi
+
+sort_and_uniq() {
+	cat $1 | sort -u > temp.txt
+	cat temp.txt > $1
+	rm temp.txt
+}
+
+gen_brute() {
+	echo "Generation potential subs from commonspeak2"
+
+	while read sub; do
+  	echo "$sub.$domain" >> potential_subs.txt
+	done < $COMMONSPEAK_DICT
+}
+
+sub_alts() {
+	echo "Generating alterations of valid domains"
+
+	cat valid_domains.txt > alt_seeds.txt
+	cat all_subs.txt >> alt_seeds.txt
+	sort_and_uniq alt_seeds.txt
+
+	# TODO: try DNSCewl
+	dnsgen alt_seeds.txt -f > sub_alterations.txt
+	rm alt_seeds.txt
+
+	puredns resolve -q sub_alterations.txt \
+		-r $DNS_RESOLVERS_FILE \
+		--wildcard-tests $WILDCARD_TESTS \
+		--write valid_alts.txt \
+		--write-wildcards wildcards.txt \
+		--write-massdns massdns.txt
+
+	valid_domains=$(wc -l valid_alts.txt | awk '{print  $1}')
+	echo "puredns found $valid_domains valid subdomains"
+
+  rm sub_alterations.txt
+	cat valid_alts.txt >> valid_domains.txt
+	sort_and_uniq valid_domains.txt
+}
+
+get_urls () {
+	echo "Getting urls..."
+	gau --blacklist ttf,woff,svg,png,jpg,gif --o ./all_urls.txt --subs $domain
+	cat baseurls.txt | waybackurls >> ./all_urls.txt
+	cat baseurls.txt >> ./all_urls.txt
+	sort_and_uniq all_urls.txt
+
+	cat ./all_urls.txt | sort -u | unfurl --unique keys > ./paramlist.txt
+	[ -s ./paramlist.txt ] && echo "Wordlist saved to /paramlist.txt"
+
+	cat ./all_urls.txt | sort -u | grep -P "\w+\.js(\?|$)" | sort -u > ./jsurls.txt
+	[ -s ./jsurls.txt ] && echo "JS Urls saved to jsurls.txt"
+
+	cat ./all_urls.txt | sort -u | grep -P "\w+\.php(\?|$) | sort -u " > ./phpurls.txt
+	[ -s ./phpurls.txt ] && echo "PHP Urls saved to phpurls.txt"
+
+	cat ./all_urls.txt | sort -u | grep -P "\w+\.aspx(\?|$) | sort -u " > ./aspxurls.txt
+	[ -s ./aspxurls.txt ] && echo "ASP Urls saved to aspxurls.txt"
+
+	cat ./all_urls.txt | sort -u | grep -P "\w+\.jsp(\?|$) | sort -u " > ./jspurls.txt
+	[ -s ./jspurls.txt ] && echo "JSP Urls saved to jspurls.txt"
+
+	cat all_urls.txt | httpx -silent > live_urls.txt
+}
+
+mkdir $domain
+cd $domain
+
+datestamp=$(date +%Y%m%d)
+mkdir $datestamp
+cd $datestamp
+
+echo "Scanning $domain"
+
+amass enum -rf $DNS_RESOLVERS_FILE -d $domain -nolocaldb -nocolor -passive | tee -a all_subs.txt
+cat all_subs.txt | unfurl --unique domains | grep $domain > tmpfile
+cat tmpfile > all_subs.txt
+rm tmpfile
+
+amass_count=$(wc -l all_subs.txt | awk '{print  $1}')
+
+echo "amass found $amass_count unique subdomains"
+
+github-subdomains -raw -d $domain | tee -a all_subs.txt
+
+github_count=$(wc -l all_subs.txt | awk '{print  $1}')
+echo "github-subdomains found $github_count subdomains"
+
+
+# TODO look into experimentalServer & microsubs
+#zcat /opt/sonar/2021-10-29-1635540560-fdns_any.json.gz | grep -F '.$domain"' | jq -r .name | grep '.$domain$' | sort -u >> all_subs.txt
+dnsgrep -f /opt/dnsgrep/fdns_a.sort.txt -i ".$domain" \
+	| tr ',' '\n' \
+	| grep "$domain" \
+	| sort -u >> all_subs.txt
+
+cat all_subs.txt > potential_subs.txt
+
+if [ -z "$NO_BRUTE" ];
+then
+	gen_brute
+fi
+
+sort_and_uniq potential_subs.txt
+
+puredns resolve potential_subs.txt \
+	-r $DNS_RESOLVERS_FILE \
+	--wildcard-tests $WILDCARD_TESTS \
+	--write valid_domains.txt \
+	--write-wildcards wildcards.txt \
+	--write-massdns massdns.txt
+
+cat valid_domains.txt >> all_subs.txt
+sort_and_uniq all_subs.txt
+rm potential_subs.txt
+
+valid_domains=$(wc -l valid_domains.txt | awk '{print  $1}')
+echo "puredns found $valid_domains valid subdomains"
+
+if [ -z "$NO_ALTS" ];
+then
+	sub_alts
+fi
+
+echo "Interogating valid subdomains & collecting records."
+dig_deep_zdns valid_domains.txt
+
+cat valid_domains.txt | httpx -silent -ports 80,443,8080,8443 | tee -a baseurls.txt
+echo "$(wc -l baseurls.txt | awk '{print  $1}') web servers found."
+
+get_urls $domain
+
+if [ -z "$NO_SCREENSHOTS" ];
+then
+	echo "Taking screenshots.."
+	cat baseurls.txt | aquatone -chrome-path /usr/bin/chromium -silent -threads=5 -screenshot-timeout 300000
+fi
+
+#if [ -z "$NO_CLOUD" ];
+#then
+	# TODO: cloudenum
+#fi
+
+rm $(ls -la | awk '{print ">>", $5, $9}' | grep ">> 0" | awk '{print $3}')

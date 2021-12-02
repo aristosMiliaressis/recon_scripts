@@ -1,0 +1,149 @@
+#!/bin/bash
+
+if [ $# -eq 0 ];
+then
+    echo "USAGE: dig_deep <hostfile>"
+    exit 1
+fi
+
+RESOLVERS=1.1.1.1,8.8.8.8,8.8.4.4
+
+mkdir dns
+
+sort_and_uniq() {
+    cat $1 | sort -u > temp.txt
+    cat temp.txt > $1
+    rm temp.txt
+}
+
+echo "Querying ANY records.."
+cat $1 \
+    | zdns ANY -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/any_records.txt
+
+echo "Querying A records.."
+cat $1 \
+    | zdns A -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/a_records.txt
+
+echo "Querying AAAA records.."
+cat $1 \
+    | zdns AAAA -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/aaaa_records.txt
+
+echo "Querying CNAME records.."
+cat $1 \
+    | zdns CNAME -name-servers $RESOLVERS > dns/cname_records.txt
+
+echo "Querying NS records.."
+cat $1 \
+    | zdns NS -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/ns_records.txt
+
+echo "Querying TXT records.."
+cat $1 \
+    | zdns TXT -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/txt_records.txt
+
+echo "Querying MX records.."
+cat $1 \
+    | zdns MX -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/mx_records.txt
+
+echo "Querying SRV records.."
+cat $1 \
+    | zdns SRV -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/srv_records.txt
+
+echo "Querying HTTPS records.."
+cat $1 \
+    | zdns HTTPS -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/https_records.txt
+
+echo "Querying HINFO records.."
+cat $1 \
+    | zdns HINFO -name-servers $RESOLVERS -result-verbosity short \
+    | jq .data.answers \
+    | grep -v null > dns/hinfo_records.txt
+
+cat dns/a_records.txt \
+    | jq -r '{type: .[].type, ip: .[].answer} | "_\(.type)_ \(.ip)"' \
+    | grep "_A_" \
+    | awk '{print $2}' \
+    | grep -v '[a-zA-Z]' > dns/all_hosts.txt
+
+cat dns/aaaa_records.txt \
+    | jq -r '{type: .[].type, ip: .[].answer} | "_\(.type)_ \(.ip)"' \
+    | grep "_AAAA_" \
+    | awk '{print $2}' \
+    | grep -v '[a-zA-Z]'  >> dns/all_hosts.txt
+
+# extracting ips from SPF records
+cat dns/txt_records.txt \
+    | jq -r .[].answer \
+    | grep v=spf \
+    | tr ' ' '\n' \
+    | grep 'ip4\|ip6' \
+    | cut -d ':' -f2- >> dns/all_hosts.txt
+
+sort_and_uniq dns/all_hosts.txt
+
+echo "Querying PTR records.."
+cat dns/all_hosts.txt | zdns PTR -name-servers $RESOLVERS -result-verbosity short -output-file dns/ptr_records.txt
+
+cat dns/cname_records.txt 
+    | jq -r '{name:.name, status:.status} | "\(.status) \(.name)"' \
+    | grep 'NXDOMAIN' > dns/potential_cname_takeovers.txt
+
+cat dns/ns_records.txt \
+	| jq -r '{ns:.[].answer, type:.[].type, name:.[].name} | "\(.name) \(.type) \(.ns)"' \
+	| grep " NS " \
+	| awk '{print $1, "," ,$3}' \
+	| tr -d ' ' \
+	| sort -u \
+	| zdns A \
+	| jq  -r '{name: .name, status:.status, ns: .data.resolver} | "\(.status) \(.name) \(.ns)"' \
+	| grep 'SERVFAIL\|REFUSED\|no servers could be reached' > dns/potential_ns_takeovers.txt
+
+# TODO: MX takeovers
+
+cat dns/ns_records.txt \
+    | jq -r '{type: .[].type, domain: .[].name, ns: .[].answer} | "\(.domain) _\(.type)_ \(.ns)"' \
+    | grep "_NS_" \
+    | sort -u \
+    | while read -r entry; 
+do
+    ns=$(echo $entry | awk '{print $3}') 
+    domain=$(echo $entry | awk '{print $1}')
+
+    echo "$ns,$domain" >> zt_attempts.txt
+    echo "$ns,local" >> zt_attempts.txt
+    echo "$ns,internal" >> zt_attempts.txt
+    echo "$ns,int" >> zt_attempts.txt
+    echo "$ns,network" >> zt_attempts.txt
+    echo "$ns,company" >> zt_attempts.txt
+    echo "$ns,server" >> zt_attempts.txt
+    echo "$ns,lan" >> zt_attempts.txt
+    echo "$ns,computer" >> zt_attempts.txt
+    echo "$ns,192.168" >> zt_attempts.txt
+    echo "$ns,10" >> zt_attempts.txt
+    for i in $(seq 16 31);
+    do
+        echo "$ns,172.$i" >> zt_attempts.txt
+    done
+done
+
+echo "Attempting zone transfers"
+cat zt_attempts.txt | zdns AXFR -name-server-mode -result-verbosity short -output-file dns/axfr_records.txt
+rm zt_attempts.txt
+
+cd dns
+rm $(ls -la | awk '{print ">>", $5, $9}' | grep ">> 0" | awk '{print $3}')
