@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # TODO:
+# cero scan  TLS CERTS
 # fix zone transfer code
 # cloudenum
 
@@ -25,6 +26,7 @@ print_help() {
 	echo "looks for subdomains in FDNS"
 	echo "bruteforces subdomains with commonspeak2"
 	echo "tries alterations of routable subdomains with dnsgen"
+	echo "extracts alt names from all certs on found domains"
 	echo "interogates valid subdomains and collects all valid records"
 	echo "extracts ips from A/AAAA & SPF records"
 	echo "collects PTR records for all ips"
