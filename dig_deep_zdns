@@ -8,7 +8,7 @@ fi
 
 RESOLVERS=1.1.1.1,8.8.8.8,8.8.4.4
 
-mkdir dns
+mkdir dns 2> /dev/null
 
 sort_and_uniq() {
     cat $1 | sort -u > temp.txt
@@ -99,7 +99,7 @@ sort_and_uniq dns/all_hosts.txt
 echo "Querying PTR records.."
 cat dns/all_hosts.txt | zdns PTR -name-servers $RESOLVERS -result-verbosity short -output-file dns/ptr_records.txt
 
-cat dns/cname_records.txt 
+cat dns/cname_records.txt \
     | jq -r '{name:.name, status:.status} | "\(.status) \(.name)"' \
     | grep 'NXDOMAIN' > dns/potential_cname_takeovers.txt
 
@@ -115,6 +115,8 @@ cat dns/ns_records.txt \
 
 # TODO: MX takeovers
 
+echo "Trying a bunch of zone transfer attempts"
+
 cat dns/ns_records.txt \
     | jq -r '{type: .[].type, domain: .[].name, ns: .[].answer} | "\(.domain) _\(.type)_ \(.ns)"' \
     | grep "_NS_" \
@@ -124,25 +126,25 @@ do
     ns=$(echo $entry | awk '{print $3}') 
     domain=$(echo $entry | awk '{print $1}')
 
-    echo "$ns,$domain" >> zt_attempts.txt
-    echo "$ns,local" >> zt_attempts.txt
-    echo "$ns,internal" >> zt_attempts.txt
-    echo "$ns,int" >> zt_attempts.txt
-    echo "$ns,network" >> zt_attempts.txt
-    echo "$ns,company" >> zt_attempts.txt
-    echo "$ns,server" >> zt_attempts.txt
-    echo "$ns,lan" >> zt_attempts.txt
-    echo "$ns,computer" >> zt_attempts.txt
-    echo "$ns,192.168" >> zt_attempts.txt
-    echo "$ns,10" >> zt_attempts.txt
+    echo "$domain,$ns" >> zt_attempts.txt
+    echo "local,$ns" >> zt_attempts.txt
+    echo "internal,$ns" >> zt_attempts.txt
+    echo "int,$ns" >> zt_attempts.txt
+    echo "network,$ns" >> zt_attempts.txt
+    echo "company,$ns" >> zt_attempts.txt
+    echo "server,$ns" >> zt_attempts.txt
+    echo "lan,$ns" >> zt_attempts.txt
+    echo "computer,$ns" >> zt_attempts.txt
+    echo "192.168,$ns" >> zt_attempts.txt
+    echo "10,$ns" >> zt_attempts.txt
     for i in $(seq 16 31);
     do
-        echo "$ns,172.$i" >> zt_attempts.txt
+        echo "172.$i,$ns" >> zt_attempts.txt
     done
 done
 
-echo "Attempting zone transfers"
-cat zt_attempts.txt | zdns AXFR -name-server-mode -result-verbosity short -output-file dns/axfr_records.txt
+cat zt_attempts.txt | zdns AXFR -result-verbosity short \
+    | jq -r '{status: .data.servers[].status, ns:.data.servers[].server, name: .name} | "\(.status) \(.ns) \(.name)"' > dns/axfr_records.txt
 rm zt_attempts.txt
 
 cd dns

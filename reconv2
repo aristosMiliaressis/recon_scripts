@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# TODO:
-# cero scan  TLS CERTS
-# fix zone transfer code
-# cloudenum
-
 DNS_RESOLVERS_FILE=/opt/dnsvalidator/resolvers_top25.txt
 COMMONSPEAK_DICT=/opt/commonspeak2-wordlists/subdomains/subdomains.txt
 WILDCARD_TESTS=3
@@ -102,7 +97,7 @@ sub_alts() {
 	sort_and_uniq alt_seeds.txt
 
 	# TODO: try DNSCewl
-	dnsgen alt_seeds.txt -f > sub_alterations.txt
+	dnsgen alt_seeds.txt > sub_alterations.txt
 	rm alt_seeds.txt
 
 	puredns resolve -q sub_alterations.txt \
@@ -121,32 +116,33 @@ sub_alts() {
 }
 
 get_urls () {
-	echo "Getting urls..."
+	echo "Getting urls from gau..."
 	gau --blacklist ttf,woff,svg,png,jpg,gif --o ./all_urls.txt --subs $domain
+	echo "Getting urls from wayback machine..."
 	cat baseurls.txt | waybackurls >> ./all_urls.txt
 	cat baseurls.txt >> ./all_urls.txt
 	sort_and_uniq all_urls.txt
 
 	cat ./all_urls.txt | sort -u | unfurl --unique keys > ./paramlist.txt
-	[ -s ./paramlist.txt ] && echo "Wordlist saved to /paramlist.txt"
+	[ -s ./paramlist.txt ] && cat ./paramlist.txt #| pwnctl && echo "Wordlist saved to /paramlist.txt"
 
 	cat ./all_urls.txt | sort -u | grep -P "\w+\.js(\?|$)" | sort -u > ./jsurls.txt
-	[ -s ./jsurls.txt ] && echo "JS Urls saved to jsurls.txt"
+	[ -s ./jsurls.txt ] && cat ./jsurls.txt #| pwnctl && echo "JS Urls saved to jsurls.txt"
 
 	cat ./all_urls.txt | sort -u | grep -P "\w+\.php(\?|$) | sort -u " > ./phpurls.txt
-	[ -s ./phpurls.txt ] && echo "PHP Urls saved to phpurls.txt"
+	[ -s ./phpurls.txt ] && cat ./phpurls.txt #| pwnctl && echo "PHP Urls saved to phpurls.txt"
 
 	cat ./all_urls.txt | sort -u | grep -P "\w+\.aspx(\?|$) | sort -u " > ./aspxurls.txt
-	[ -s ./aspxurls.txt ] && echo "ASP Urls saved to aspxurls.txt"
+	[ -s ./aspxurls.txt ] && cat ./aspxurls.txt #| pwnctl && echo "ASP Urls saved to aspxurls.txt"
 
 	cat ./all_urls.txt | sort -u | grep -P "\w+\.jsp(\?|$) | sort -u " > ./jspurls.txt
-	[ -s ./jspurls.txt ] && echo "JSP Urls saved to jspurls.txt"
+	[ -s ./jspurls.txt ] && cat ./jspurls.txt #| pwnctl && echo "JSP Urls saved to jspurls.txt"
 
 	cat all_urls.txt | httpx -silent > live_urls.txt
 }
 
-mkdir $domain
-cd $domain
+mkdir $domain 2> /dev/null
+cd $domain 2> /dev/null
 
 datestamp=$(date +%Y%m%d)
 mkdir $datestamp
@@ -163,16 +159,11 @@ amass_count=$(wc -l all_subs.txt | awk '{print  $1}')
 
 echo "amass found $amass_count unique subdomains"
 
-github-subdomains -raw -d $domain | tee -a all_subs.txt
-
-github_count=$(wc -l all_subs.txt | awk '{print  $1}')
-echo "github-subdomains found $github_count subdomains"
-
-
-# TODO look into experimentalServer & microsubs
-#zcat /opt/sonar/2021-10-29-1635540560-fdns_any.json.gz | grep -F '.$domain"' | jq -r .name | grep '.$domain$' | sort -u >> all_subs.txt
+# TODO look into experimentalServer & microsubs & https://github.com/Cgboal/SonarSearch
+zcat /opt/sonar/2021-10-29-1635540560-fdns_any.json.gz | grep -F '.$domain"' | jq -r .name | grep '.$domain$' | sort -u >> all_subs.txt
 dnsgrep -f /opt/dnsgrep/fdns_a.sort.txt -i ".$domain" \
 	| tr ',' '\n' \
+	| tr ' ' '\n' \
 	| grep "$domain" \
 	| sort -u >> all_subs.txt
 
@@ -193,7 +184,6 @@ puredns resolve potential_subs.txt \
 	--write-massdns massdns.txt
 
 cat valid_domains.txt >> all_subs.txt
-sort_and_uniq all_subs.txt
 rm potential_subs.txt
 
 valid_domains=$(wc -l valid_domains.txt | awk '{print  $1}')
@@ -204,11 +194,26 @@ then
 	sub_alts
 fi
 
+echo "Scanning TLS certs for alt names"
+cat valid_domains.txt \
+	| cero -p 21,22,25,80,110,135,143,261,271,324,443,448,465,563,614,631,636,664,684,695,832,853,854,990,993,989,990,992,993,994,995,1129,1131,1184,2083,2087,2089,2096,2221,2252,2376,2381,2478,2479,2482,2484,2679,2762,3077,3078,3183,3191,3220,3269,3306,3410,3424,3471,3496,3509,3529,3539,3535,3660,36611,3713,3747,3766,3864,3885,3995,3896,4031,4036,4062,4064,4081,4083,4116,4335,4336,4536,4590,4740,4843,4843,4849,5443,5007,5061,5321,5349,5671,5783,5868,5986,5989,5990,6209,6251,6443,6513,6514,6619,6697,6771,6697,7202,7443,7673,7674,7677,7775,8243,8443,8991,8989,9089,9295,9318,9443,9444,9614,9802,10161,10162,11751,12013,12109,14143,15002,16995,41230,16993,20003 \
+	| sort -u > alt_names.txt
+
+cat alt_names.txt | grep $domain >> all_subs.txt
+cat alt_names.txt | grep $domain >> valid_domains.txt
+
+sort_and_uniq all_subs.txt
+sort_and_uniq valid_domains.txt
+
+#pwnctl < valid_domains.txt
+
 echo "Interogating valid subdomains & collecting records."
 dig_deep_zdns valid_domains.txt
 
 cat valid_domains.txt | httpx -silent -ports 80,443,8080,8443 | tee -a baseurls.txt
 echo "$(wc -l baseurls.txt | awk '{print  $1}') web servers found."
+
+#pwnctl < baseurls.txt
 
 get_urls $domain
 
@@ -220,7 +225,8 @@ fi
 
 #if [ -z "$NO_CLOUD" ];
 #then
-	# TODO: cloudenum
+# TODO: cloudenum
+# https://github.com/jordanpotti/CloudScraper
 #fi
 
 rm $(ls -la | awk '{print ">>", $5, $9}' | grep ">> 0" | awk '{print $3}')
