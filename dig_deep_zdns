@@ -113,6 +113,25 @@ cat dns/ns_records.txt \
 	| jq  -r '{name: .name, status:.status, ns: .data.resolver} | "\(.status) \(.name) \(.ns)"' \
 	| grep 'SERVFAIL\|REFUSED\|no servers could be reached' > dns/potential_ns_takeovers.txt
 
+cat dns/ns_records.txt | jq -r '{ns:.[].answer, type:.[].type} | "\(.type) \(.ns)"' \
+        | grep "NS " \
+        | awk '{print $2}' \
+    | while read ns; \
+        do \
+            dig "$(dig +short $ns | head -1)" PTR @$ns | grep PTR; \
+            dig version.bind txt chaos @$ns  | grep TXT | while read line; do echo "$ns\t$line"; done; \
+            dig hostname.bind txt chaos @$ns | grep TXT | while read line; do echo "$ns\t$line"; done; \
+        done >> dns/bind_info.txt
+
+cat dns/ns_records.txt \
+    | jq -r '{ns:.[].answer, type:.[].type} | "\(.type) \(.ns)"' \
+    | grep "NS " \
+    | awk '{print "google.com",$2}' \
+    | tr ' ' ',' \
+    | zdns A -result-verbosity long \
+    | jq 'select(.data.flags.recursion_available == true) | {ns: .data.resolver,recursion_available:.data.flags.recursion_available}' > dns_recursion_enabled.txt
+
+
 # TODO: MX takeovers
 
 echo "Trying a bunch of zone transfer attempts"
