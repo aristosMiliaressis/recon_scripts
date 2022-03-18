@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ $# -eq 0 ]; 
+then
+    echo "USAGE: $0 <url_file>"
+    exit 1
+fi
+
+cat $1 \
+    | httpx -silent -json -o httpx.json -H "User-Agent: Mozilla" \
+    | aquatone -silent --chrome-path /usr/bin/chromium
+
+whatweb -i aquatone_urls.txt --log-json=whatweb.json --user-agent "User-Agent: Mozilla"
