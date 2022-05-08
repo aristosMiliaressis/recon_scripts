@@ -1,0 +1,20 @@
+#!/bin/bash
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <cidr> [csv_ports]"
+    exit
+fi
+
+IFS=','
+read -a ports <<< "$2"
+
+nmap -sL -n $1 | awk '/Nmap scan report/{print $NF}' | while read ip; 
+do
+	for port in "${ports[@]}";
+	do
+		echo "$ip:$port"
+	done
+	if [ "$#" -eq 1 ]; then
+		echo "$ip"
+	fi
+done

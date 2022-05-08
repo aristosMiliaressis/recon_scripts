@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# follow redirects
+# meg & organize endpoints by status code
+# cdn_waf test
+
 DNS_RESOLVERS_FILE=/opt/dnsvalidator/resolvers_top25.txt
 #COMMONSPEAK_DICT=/opt/commonspeak2-wordlists/subdomains/subdomains.txt
 COMMONSPEAK_DICT=/home/aristos/GitRepos/recon_scripts/wordlists/top20000.txt
@@ -98,7 +102,7 @@ sub_alts() {
 	sort_and_uniq alt_seeds.txt
 
 	# TODO: try DNSCewl
-	dnsgen alt_seeds.txt > sub_alterations.txt
+	dnsgen -f alt_seeds.txt > sub_alterations.txt
 	rm alt_seeds.txt
 
 	puredns resolve -q sub_alterations.txt \
@@ -143,10 +147,10 @@ get_urls () {
 }
 
 mkdir $domain 2> /dev/null
-cd $domain 2> /dev/null
+cd $domain
 
 datestamp=$(date +%Y%m%d)
-mkdir $datestamp
+mkdir $datestamp 2> /dev/null
 cd $datestamp
 
 echo "Scanning $domain"
@@ -161,7 +165,7 @@ amass_count=$(wc -l all_subs.txt | awk '{print  $1}')
 echo "amass found $amass_count unique subdomains"
 
 # TODO look into experimentalServer & microsubs & https://github.com/Cgboal/SonarSearch
-zcat /opt/sonar/2021-10-29-1635540560-fdns_any.json.gz | grep -F '.$domain"' | jq -r .name | grep '.$domain$' | sort -u >> all_subs.txt
+#zcat /opt/sonar/2021-10-29-1635540560-fdns_any.json.gz | grep -F '.$domain"' | jq -r .name | grep '.$domain$' | sort -u >> all_subs.txt
 dnsgrep -f /opt/dnsgrep/fdns_a.sort.txt -i ".$domain" \
 	| tr ',' '\n' \
 	| tr ' ' '\n' \

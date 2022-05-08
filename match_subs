@@ -1,0 +1,5 @@
+#!/bin/bash
+
+domain=$1
+
+# read domains from stdin and only select subdomains

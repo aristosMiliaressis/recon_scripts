@@ -26,69 +26,83 @@ echo "Querying A records.."
 cat $1 \
     | zdns A -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/a_records.txt
+    | grep -v null \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___A___" > dns/a_records.txt
 
 echo "Querying AAAA records.."
 cat $1 \
     | zdns AAAA -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/aaaa_records.txt
+    | grep -v null \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___AAAA___" > dns/aaaa_records.txt
 
 echo "Querying CNAME records.."
 cat $1 \
-    | zdns CNAME -name-servers $RESOLVERS > dns/cname_records.txt
+    | zdns CNAME -name-servers 1.1.1.1 \
+    | jq -r ' "\(.data.answers[].name) ___\(.data.answers[].type)___ \(.data.answers[].answer) \(.status)"' 2> /dev/null 1> dns/cname_records.txt
 
 echo "Querying NS records.."
 cat $1 \
     | zdns NS -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/ns_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___NS___" > dns/ns_records.txt
 
 echo "Querying TXT records.."
 cat $1 \
     | zdns TXT -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/txt_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___TXT___" > dns/txt_records.txt
 
 echo "Querying MX records.."
 cat $1 \
     | zdns MX -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/mx_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___MX___" > dns/mx_records.txt
 
 echo "Querying SRV records.."
 cat $1 \
     | zdns SRV -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/srv_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___SRV___" > dns/srv_records.txt
 
 echo "Querying HTTPS records.."
 cat $1 \
     | zdns HTTPS -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/https_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___HTTPS___" > dns/https_records.txt
 
 echo "Querying HINFO records.."
 cat $1 \
     | zdns HINFO -name-servers $RESOLVERS -result-verbosity short \
     | jq .data.answers \
-    | grep -v null > dns/hinfo_records.txt
+    | grep -v null  \
+    | jq -r ' "\(.[].name) ___\(.[].type)___ \(.[].answer)"' | grep "___HINFO___" > dns/hinfo_records.txt
+
+sort_and_uniq dns/a_records.txt
+sort_and_uniq dns/aaaa_records.txt
+sort_and_uniq dns/cname_records.txt
+sort_and_uniq dns/ns_records.txt
+sort_and_uniq dns/txt_records.txt
+sort_and_uniq dns/mx_records.txt
+sort_and_uniq dns/srv_records.txt
+sort_and_uniq dns/https_records.txt
+sort_and_uniq dns/hinfo_records.txt
 
 cat dns/a_records.txt \
-    | jq -r '{type: .[].type, ip: .[].answer} | "_\(.type)_ \(.ip)"' \
-    | grep "_A_" \
-    | awk '{print $2}' \
+    | awk '{print $3}' \
     | grep -v '[a-zA-Z]' > dns/all_hosts.txt
 
 cat dns/aaaa_records.txt \
-    | jq -r '{type: .[].type, ip: .[].answer} | "_\(.type)_ \(.ip)"' \
-    | grep "_AAAA_" \
-    | awk '{print $2}' \
+    | awk '{print $3}' \
     | grep -v '[a-zA-Z]'  >> dns/all_hosts.txt
 
 # extracting ips from SPF records
 cat dns/txt_records.txt \
-    | jq -r .[].answer \
     | grep v=spf \
     | tr ' ' '\n' \
     | grep 'ip4\|ip6' \
@@ -97,15 +111,13 @@ cat dns/txt_records.txt \
 sort_and_uniq dns/all_hosts.txt
 
 echo "Querying PTR records.."
-cat dns/all_hosts.txt | zdns PTR -name-servers $RESOLVERS -result-verbosity short -output-file dns/ptr_records.txt
+cat dns/all_hosts.txt | zdns PTR -name-servers $RESOLVERS \
+    | jq -r '"\(.data.answers[].name) \(.data.answers[].type) \(.data.answers[].answer)"' 2> /dev/null 1> dns/ptr_records.txt
 
 cat dns/cname_records.txt \
-    | jq -r '{name:.name, status:.status} | "\(.status) \(.name)"' \
     | grep 'NXDOMAIN' > dns/potential_cname_takeovers.txt
 
 cat dns/ns_records.txt \
-	| jq -r '{ns:.[].answer, type:.[].type, name:.[].name} | "\(.name) \(.type) \(.ns)"' \
-	| grep " NS " \
 	| awk '{print $1, "," ,$3}' \
 	| tr -d ' ' \
 	| sort -u \
@@ -113,9 +125,7 @@ cat dns/ns_records.txt \
 	| jq  -r '{name: .name, status:.status, ns: .data.resolver} | "\(.status) \(.name) \(.ns)"' \
 	| grep 'SERVFAIL\|REFUSED\|no servers could be reached' > dns/potential_ns_takeovers.txt
 
-cat dns/ns_records.txt | jq -r '{ns:.[].answer, type:.[].type} | "\(.type) \(.ns)"' \
-        | grep "NS " \
-        | awk '{print $2}' \
+cat dns/ns_records.txt | awk '{print $3}' \
     | while read ns; \
         do \
             dig "$(dig +short $ns | head -1)" PTR @$ns | grep PTR; \
@@ -124,9 +134,7 @@ cat dns/ns_records.txt | jq -r '{ns:.[].answer, type:.[].type} | "\(.type) \(.ns
         done >> dns/bind_info.txt
 
 cat dns/ns_records.txt \
-    | jq -r '{ns:.[].answer, type:.[].type} | "\(.type) \(.ns)"' \
-    | grep "NS " \
-    | awk '{print "google.com",$2}' \
+    | awk '{print "google.com",$3}' \
     | tr ' ' ',' \
     | zdns A -result-verbosity long \
     | jq 'select(.data.flags.recursion_available == true) | {ns: .data.resolver,recursion_available:.data.flags.recursion_available}' > dns_recursion_enabled.txt
@@ -137,9 +145,6 @@ cat dns/ns_records.txt \
 echo "Trying a bunch of zone transfer attempts"
 
 cat dns/ns_records.txt \
-    | jq -r '{type: .[].type, domain: .[].name, ns: .[].answer} | "\(.domain) _\(.type)_ \(.ns)"' \
-    | grep "_NS_" \
-    | sort -u \
     | while read -r entry; 
 do
     ns=$(echo $entry | awk '{print $3}') 
